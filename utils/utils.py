@@ -2,24 +2,31 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import ImageGrid
 import os
+import torch
 
-def sample_image(model, language_model, output_image_dir, n_row, batches_done, dataloader):
-    """Saves a grid of generated imagenet pictures with captions.
-    """
+
+def sample_image(model, encoder, output_image_dir, n_row, batches_done, dataloader, device):
+    """Saves a grid of generated imagenet pictures with captions"""
     target_dir = os.path.join(output_image_dir, "samples/")
     if not os.path.isdir(target_dir):
         os.makedirs(target_dir)
 
     captions = []
+    gen_imgs = []
     # get sample captions
-    for (_, captions_batch) in dataloader:
-        captions += captions_batch
-        if len(captions) > n_row ** 2:
-            captions = captions[:n_row ** 2]
-            break
+    done = False
+    while not done:
+        for (_, labels_batch, captions_batch) in dataloader:
+            captions += captions_batch
+            conditional_embeddings = encoder(labels_batch.to(device), captions)
+            imgs = model.sample(conditional_embeddings).cpu()
+            gen_imgs.append(imgs)
 
-    captions_embd = language_model(captions)
-    gen_imgs = model.sample(captions_embd).cpu().numpy()
+            if len(captions) > n_row ** 2:
+                done = True
+                break
+
+    gen_imgs = torch.cat(gen_imgs).numpy()
     gen_imgs = np.clip(gen_imgs, 0, 1)
 
     fig = plt.figure(figsize=((8, 8)))
@@ -33,3 +40,9 @@ def sample_image(model, language_model, output_image_dir, n_row, batches_done, d
     save_file = os.path.join(target_dir, "{:013d}.png".format(batches_done))
     plt.savefig(save_file)
     print("saved  {}".format(save_file))
+    plt.close()
+
+
+def load_model(file_path, generative_model):
+    dict = torch.load(file_path)
+    generative_model.load_state_dict(dict)
