@@ -32,7 +32,7 @@ class ConditionalPixelCNNpp(ConditionedGenerativeModel):
 
         loss = self.loss_function(imgs, model_output, nmix=self.n_logistic_mix) / (
                     h * w * bsize * c)  # .view(bsize, -1).mean(dim=1)
-        outputs = {"loss": loss, "log_likelihood": None,
+        outputs = {"loss": loss, "log_likelihood": self.likelihood(imgs, model_output),
                    "log_probs": model_output}  # TODO get log_likelihood, check log_probs
         return outputs
 
