@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 import numpy as np
 
@@ -49,7 +50,7 @@ class Discriminator(nn.Module):
         )
 
     def forward(self, img, condition_embd):
-        d_in = torch.cat((img.view(img.size(0), -1), condition_embd, -1)
+        d_in = torch.cat((img.view(img.size(0), -1), condition_embd, -1))
         validity = self.model(d_in)
         return validity
 
