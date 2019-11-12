@@ -1,12 +1,26 @@
-import torch
-from torch import nn
+import argparse
+import os
 import numpy as np
+import math
+
+import torchvision.transforms as transforms
+from torchvision.utils import save_image
+
+from torch.utils.data import DataLoader
+from torchvision import datasets
+from torch.autograd import Variable
+
+import torch.nn as nn
+import torch.nn.functional as F
+import torch
+
 
 class Generator(nn.Module):
     def __init__(self, embd_size, **kwargs):
         '''
         :param embd_size: int, dimension of the conditional embedding
         '''
+        self.img_shape = kwargs.get('img_shape', (3,32,32))
         latent_dim = kwargs.get('n_filters', 160)
         super(Generator, self).__init__()
         
@@ -29,7 +43,7 @@ class Generator(nn.Module):
         
     def forward(self, z):
         img = self.model(z)
-        img = img.view(img.shape[0], *img_shape)
+        img = img.view(img.shape[0], *self.img_shape)
         return img
     
 class Discriminator(nn.Module):
@@ -78,12 +92,13 @@ class ConditionedGenerativeModel(nn.Module):
 
         if self.n_classes == 0:
              ValueError('embd_size is 0!')
-                         
+
+        self.adversarial_loss = torch.nn.MSELoss()
         cuda = True if torch.cuda.is_available() else False 
         if cuda:
             self.G.cuda()
             self.D.cuda()
-            adversarial_loss.cuda()
+            self.adversarial_loss.cuda()
 
         FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
         LongTensor = torch.cuda.LongTensor if cuda else torch.LongTensor
@@ -114,26 +129,26 @@ class ConditionedGenerativeModel(nn.Module):
         gen_imgs = self.G(z, gen_labels)
                          
         # Get GENERATOR's loss
-        validity = discriminator(gen_imgs, gen_labels)
-        g_loss = adversarial_loss(validity, valid)
+        validity = self.D(gen_imgs, gen_labels)
+        g_loss = self.adversarial_loss(validity, valid)
                          
         g_loss.backward()
-        optimizer_G.step()
+        self.optimizer_G.step()
                          
         # Train DISCRIMINATOR
         # Loss for real images
-        validity_real = discriminator(real_imgs, labels)
-        d_real_loss = adversarial_loss(validity_real, valid)
+        validity_real = self.D(real_imgs, labels)
+        d_real_loss = self.adversarial_loss(validity_real, valid)
                          
         # Loss for fake images
-        validity_fake = discriminator(gen_imgs.detach(), gen_labels)
-        d_fake_loss = adversarial_loss(validity_fake, fake)
+        validity_fake = self.D(gen_imgs.detach(), gen_labels)
+        d_fake_loss = self.adversarial_loss(validity_fake, fake)
 
         # Total discriminator loss
         d_loss = (d_real_loss + d_fake_loss) / 2
 
         d_loss.backward()
-        optimizer_D.step()
+        self.optimizer_D.step()
                          
         return g_loss + d_loss
         
