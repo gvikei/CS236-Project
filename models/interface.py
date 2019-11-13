@@ -14,6 +14,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
+FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
+LongTensor = torch.cuda.LongTensor if cuda else torch.LongTensor
 
 class Generator(nn.Module):
     def __init__(self, embd_size, **kwargs):
@@ -100,9 +102,6 @@ class ConditionedGenerativeModel(nn.Module):
             self.D.cuda()
             self.adversarial_loss.cuda()
 
-        FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
-        LongTensor = torch.cuda.LongTensor if cuda else torch.LongTensor
-
 
     def forward(self, imgs, condition_embd):
         '''
@@ -166,4 +165,14 @@ class ConditionedGenerativeModel(nn.Module):
         :param condition_embd: torch.FloatTensor bsize * embd_size
         :return: imgs : torch.FloatTensor of size n_imgs * c * h * w
         '''
-        raise NotImplementedError
+        # Get batch size
+        bsize = condition_embd.shape[0]
+
+        # Sample noise
+        z = Variable(
+            FloatTensor(np.random.normal(0, 1, (bsize, self.latent_dim))))
+        # Get labels ranging from 0 to n_classes for n rows
+        labels = condition_embd
+        labels = Variable(LongTensor(labels))
+        imgs = Variable(FloatTensor(self.G(z, labels)))
+        return imgs
