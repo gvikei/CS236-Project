@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
+cuda = True if torch.cuda.is_available() else False 
 FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 LongTensor = torch.cuda.LongTensor if cuda else torch.LongTensor
 
@@ -96,7 +97,6 @@ class ConditionedGenerativeModel(nn.Module):
              ValueError('embd_size is 0!')
 
         self.adversarial_loss = torch.nn.MSELoss()
-        cuda = True if torch.cuda.is_available() else False 
         if cuda:
             self.G.cuda()
             self.D.cuda()
