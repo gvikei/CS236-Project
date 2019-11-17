@@ -1,0 +1,1 @@
+python train_pixelcnnpp.py --n_epochs=10 --n_cpu=4 --n_filters=100 --conditioning=one-hot

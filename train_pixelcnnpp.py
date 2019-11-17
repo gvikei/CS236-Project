@@ -125,6 +125,8 @@ if __name__ == "__main__":
 
     print("Len train : {}, val : {}".format(len(train_dataloader), len(val_dataloader)))
 
+    
+    print('cuda avail', torch.cuda.is_available(), 'use_cuda', opt.use_cuda)
     device = torch.device("cuda") if (torch.cuda.is_available() and opt.use_cuda) else torch.device("cpu")
 #     device = torch.device("cpu")
     print("Device is {}".format(device))
