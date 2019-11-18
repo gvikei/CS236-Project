@@ -184,9 +184,9 @@ for epoch in range(opt.niter):
         batch_size = real_cpu.size(0)
         if opt.cuda:
             real_cpu = real_cpu.cuda()
-        input.data.resize_as_(real_cpu).copy_(real_cpu)
-        dis_label.data.resize_(batch_size).fill_(real_label)
-        aux_label.data.resize_(batch_size).copy_(label)
+        input.resize_as_(real_cpu).copy_(real_cpu)
+        dis_label.resize_(batch_size).fill_(real_label)
+        aux_label.resize_(batch_size).copy_(label)
         dis_output, aux_output = netD(input)
 
         dis_errD_real = dis_criterion(dis_output, dis_label)
@@ -199,7 +199,7 @@ for epoch in range(opt.niter):
         accuracy = compute_acc(aux_output, aux_label)
 
         # train with fake
-        noise.data.resize_(batch_size, nz, 1, 1).normal_(0, 1)
+        noise.resize_(batch_size, nz, 1, 1).normal_(0, 1)
         label = np.random.randint(0, num_classes, batch_size)
         if opt.dataset == 'cifar10':
             captions = [cifar_text_labels[per_label] for per_label in label]
@@ -210,7 +210,7 @@ for epoch in range(opt.niter):
         noise_[np.arange(batch_size), :opt.embed_size] = embedding[:, :opt.embed_size]
         noise_ = (torch.from_numpy(noise_))
         noise.data.copy_(noise_.view(batch_size, nz, 1, 1))
-        aux_label.data.resize_(batch_size).copy_(torch.from_numpy(label))
+        aux_label.resize_(batch_size).copy_(torch.from_numpy(label))
 
         fake = netG(noise)
         dis_label.data.fill_(fake_label)
