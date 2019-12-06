@@ -150,6 +150,7 @@ if opt.cuda:
     aux_criterion.cuda()
     input, dis_label, aux_label = input.cuda(), dis_label.cuda(), aux_label.cuda()
     noise, eval_noise = noise.cuda(), eval_noise.cuda()
+    cudnn.benchmark = True
 
 # define variables
 input = Variable(input)
@@ -179,17 +180,7 @@ avg_loss_A = 0.0
 
 
 if sample_only:
-    real_cpu, label = dataloader[0]
-    print('captions', captions)
-    vutils.save_image(
-        real_cpu, '%s/real_samples.png' % opt.outf)
-    print('Label for eval = {}'.format(eval_label))
-    fake = netG(eval_noise)
-    vutils.save_image(
-        fake.data,
-        '%s/fake_samples_epoch_%03d.png' % (opt.outf, epoch)
-    )
-    sys.exit(0)
+    opt.niter=1
 
 for epoch in range(opt.niter):
     for i, data in enumerate(dataloader, 0):
@@ -269,7 +260,7 @@ for epoch in range(opt.niter):
         print('[%d/%d][%d/%d] Loss_D: %.4f (%.4f) Loss_G: %.4f (%.4f) D(x): %.4f D(G(z)): %.4f / %.4f Acc: %.4f (%.4f)'
               % (epoch, opt.niter, i, len(dataloader),
                  errD.item(), avg_loss_D, errG.item(), avg_loss_G, D_x, D_G_z1, D_G_z2, accuracy, avg_loss_A))
-        if i % 100 == 0:
+        if i % 100 == 0 or opt.sample_only:
             vutils.save_image(
                 real_cpu, '%s/real_samples.png' % opt.outf)
             print('Label for eval = {}'.format(eval_label))
