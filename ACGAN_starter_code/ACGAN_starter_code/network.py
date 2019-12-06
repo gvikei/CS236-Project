@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+from torchvision import models
 
 class _netG(nn.Module):
     def __init__(self, ngpu, nz):
@@ -150,6 +150,12 @@ class _netG_CIFAR10(nn.Module):
         self.ngpu = ngpu
         self.nz = nz
 
+        # Use resnet as a feature extractor
+        self.resnet = models.resnet34(pretrained=True)
+        for param in self.resnet.parameters():
+            param.requires_grad = False
+        self.resnet.fc = nn.Linear(self.resnet.fc.in_features, 200)
+
         # first linear layer
         self.fc1 = nn.Linear(200, 384)
         # Transposed Convolution 2
@@ -178,8 +184,9 @@ class _netG_CIFAR10(nn.Module):
 
     def forward(self, input):
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
-            input = input.view(-1, self.nz)
-            fc1 = nn.parallel.data_parallel(self.fc1, input, range(self.ngpu))
+            input = input.view(-1, self.resnet.conv1.in_features)
+            resnet = nn.parallel.data_parallel(self.resnet, input, range(self.ngpu))
+            fc1 = nn.parallel.data_parallel(self.fc1, resnet, range(self.ngpu))
             fc1 = fc1.view(-1, 384, 1, 1)
             tconv2 = nn.parallel.data_parallel(self.tconv2, fc1, range(self.ngpu))
             tconv3 = nn.parallel.data_parallel(self.tconv3, tconv2, range(self.ngpu))
@@ -187,8 +194,9 @@ class _netG_CIFAR10(nn.Module):
             tconv5 = nn.parallel.data_parallel(self.tconv5, tconv4, range(self.ngpu))
             output = tconv5
         else:
-            input = input.view(-1, self.nz)
-            fc1 = self.fc1(input)
+            input = input.view(-1, self.resnet.conv1.in_features)
+            resnet = self.resetnet(input)
+            fc1 = self.fc1(resnet)
             fc1 = fc1.view(-1, 384, 1, 1)
             tconv2 = self.tconv2(fc1)
             tconv3 = self.tconv3(tconv2)
