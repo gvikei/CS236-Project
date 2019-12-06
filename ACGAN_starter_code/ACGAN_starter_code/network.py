@@ -184,7 +184,7 @@ class _netG_CIFAR10(nn.Module):
 
     def forward(self, input):
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
-            input = input.view(-1, self.resnet.conv1.in_features)
+            #input = input.view(-1, self.resnet.conv1.in_features)
             resnet = nn.parallel.data_parallel(self.resnet, input, range(self.ngpu))
             fc1 = nn.parallel.data_parallel(self.fc1, resnet, range(self.ngpu))
             fc1 = fc1.view(-1, 384, 1, 1)
@@ -194,7 +194,7 @@ class _netG_CIFAR10(nn.Module):
             tconv5 = nn.parallel.data_parallel(self.tconv5, tconv4, range(self.ngpu))
             output = tconv5
         else:
-            input = input.view(-1, self.resnet.conv1.in_features)
+            #input = input.view(-1, self.resnet.conv1.in_features)
             resnet = self.resetnet(input)
             fc1 = self.fc1(resnet)
             fc1 = fc1.view(-1, 384, 1, 1)

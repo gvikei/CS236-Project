@@ -1,1 +1,0 @@
-python main.py --sample_only=True --niter=1 --batchSize=100 --cuda --dataset=cifar10 --imageSize=32 --dataroot=datasets/cifar10 --netG=netG_epoch_499.pth --netD=netD_epoch_499.pth --cuda
