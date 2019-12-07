@@ -2,16 +2,11 @@
 Code modified from PyTorch DCGAN examples: https://github.com/pytorch/examples/tree/master/dcgan
 """
 
-import time
-import tflib as lib
-import tflib.save_images
-import tflib.mnist
-import tflib.cifar10
-import tflib.plot
-import tflib.inception_score
-
-
 from __future__ import print_function
+
+from tensorboardX import SummaryWriter
+
+
 import argparse
 import os
 import numpy as np
@@ -71,6 +66,10 @@ parser.add_argument('--sample_only', type=bool, default=False, help='If enabled,
 
 opt = parser.parse_args()
 print(opt)
+
+os.makedirs(os.path.join(opt.outf, "models"), exist_ok=True)
+os.makedirs(os.path.join(opt.outf, "tensorboard"), exist_ok=True)
+writer = SummaryWriter(log_dir=os.path.join(opt.outf, "tensorboard"))
 
 # specify the gpu id if using only 1 gpu
 if opt.ngpu == 1:
@@ -209,9 +208,9 @@ optimizerG = optim.Adam(netG.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
 
 
 def calc_gradient_penalty(netD, real_data, fake_data):
-    # print "real_data: ", real_data.size(), fake_data.size()
+    # print ("real_data: ", real_data.size(), real_data.nelement()/opt.batchSize)
     alpha = torch.rand(opt.batchSize, 1)
-    alpha = alpha.expand(opt.batchSize, real_data.nelement()/opt.batchSize).contiguous().view(opt.batchSize, 3, 32, 32)
+    alpha = alpha.expand(opt.batchSize, real_data.nelement()//opt.batchSize).contiguous().view(opt.batchSize, 3, 32, 32)
     alpha = alpha.cuda(gpu) if use_cuda else alpha
 
     interpolates = alpha * real_data + ((1 - alpha) * fake_data)
@@ -221,15 +220,16 @@ def calc_gradient_penalty(netD, real_data, fake_data):
     interpolates = autograd.Variable(interpolates, requires_grad=True)
 
     disc_interpolates = netD(interpolates)
+    gradient_penalty = 0
+    for i in range(len(disc_interpolates)):
+        gradients = autograd.grad(outputs=disc_interpolates[i], inputs=interpolates,
+                                  grad_outputs=torch.ones_like(disc_interpolates[i]).cuda(gpu) if use_cuda else torch.ones_like(
+                                      disc_interpolates[i]),
+                                  create_graph=True, retain_graph=True, only_inputs=True)[0]
+        gradients = gradients.view(gradients.size(0), -1)
 
-    gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,
-                              grad_outputs=torch.ones(disc_interpolates.size()).cuda(gpu) if use_cuda else torch.ones(
-                                  disc_interpolates.size()),
-                              create_graph=True, retain_graph=True, only_inputs=True)[0]
-    gradients = gradients.view(gradients.size(0), -1)
-
-    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
-    return gradient_penalty
+        gradient_penalty += ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
+    return gradient_penalty.mean()
 
 # For generating samples
 def generate_image(frame, netG):
@@ -285,15 +285,17 @@ for epoch in range(opt.niter):
         aux_label.resize_(batch_size).copy_(label)
         dis_output, aux_output = netD(input)
 
-        D_real_dis, D_real_aux = netD(real_data_v)
-        D_real_dis = D_real_dis.mean()
-        D_real_dis.backward(mone)
+        # D_real_dis, D_real_aux = netD(real_data_v)
+        # D_real_dis = D_real_dis.mean()
+        # D_real_dis.backward(mone)
 
         dis_errD_real = dis_criterion(dis_output, dis_label)
         aux_errD_real = aux_criterion(aux_output, aux_label)
         errD_real = dis_errD_real + aux_errD_real
         errD_real.backward()
         D_x = dis_output.data.mean()
+
+        D_real = errD_real
 
         # compute the current classification accuracy
         accuracy = compute_acc(aux_output, aux_label)
@@ -318,25 +320,24 @@ for epoch in range(opt.niter):
 
 
         # Wasserstein loss + GP
-        inputv = autograd.Variable(dis_output.data)
-        D_fake = netD(inputv)
-        D_fake = D_fake.mean()
-        D_fake.backward(one)
-
-        # train with gradient penalty (GP)
-        gradient_penalty = calc_gradient_penalty(netD, real_data_v.data, fake.data)
-        gradient_penalty.backward()
-
-        # print "gradien_penalty: ", gradient_penalty
-        D_cost = D_fake - D_real_dis + gradient_penalty
-        Wasserstein_D = D_real_dis - D_fake
-
+        # inputv = autograd.Variable(dis_output.data)
+        # D_fake = netD(inputv)
+        # D_fake = D_fake.mean()
+        # D_fake.backward(one)
 
         dis_errD_fake = dis_criterion(dis_output, dis_label)
         aux_errD_fake = aux_criterion(aux_output, aux_label)
         errD_fake = dis_errD_fake + aux_errD_fake
         errD_fake.backward()
+        D_fake = errD_fake
 
+        # train with gradient penalty (GP)
+        gradient_penalty = calc_gradient_penalty(netD, real_cpu.data, fake.data)
+        gradient_penalty.backward()
+
+        # print "gradien_penalty: ", gradient_penalty
+        D_cost = D_fake - D_real + gradient_penalty
+        Wasserstein_D = D_real - D_fake
 
         D_G_z1 = dis_output.data.mean()
         # errD = errD_real + errD_fake
@@ -372,6 +373,12 @@ for epoch in range(opt.niter):
         print('[%d/%d][%d/%d] Loss_D: %.4f (%.4f) Loss_G: %.4f (%.4f) D(x): %.4f D(G(z)): %.4f / %.4f Acc: %.4f (%.4f)'
               % (epoch, opt.niter, i, len(dataloader),
                  errD.item(), avg_loss_D, errG.item(), avg_loss_G, D_x, D_G_z1, D_G_z2, accuracy, avg_loss_A))
+
+        batches_done = epoch * len(dataloader) + i
+        writer.add_scalar('train/bpd', avg_loss_G / np.log(2), batches_done)
+        writer.add_scalar('Wasserstein loss', avg_loss_D, batches_done)
+
+
         if i % 100 == 0 or opt.sample_only:
             vutils.save_image(
                 real_cpu, '%s/real_samples.png' % opt.outf)
@@ -385,5 +392,9 @@ for epoch in range(opt.niter):
     # do checkpointing
     torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (opt.outf, epoch))
     torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (opt.outf, epoch))
+
+    # Compute inception score
+    inception_score = get_inception_score(netG)
+    writer.add_scalar("inception_score", inception_score, (epoch + 1) * len(dataloader))
 
 
