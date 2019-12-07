@@ -1,6 +1,16 @@
 """
 Code modified from PyTorch DCGAN examples: https://github.com/pytorch/examples/tree/master/dcgan
 """
+
+import time
+import tflib as lib
+import tflib.save_images
+import tflib.mnist
+import tflib.cifar10
+import tflib.plot
+import tflib.inception_score
+
+
 from __future__ import print_function
 import argparse
 import os
@@ -11,7 +21,10 @@ import sys
 import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
+
+
 import torch.optim as optim
+from torch import autograd
 import torch.utils.data
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
@@ -21,6 +34,15 @@ from utils import weights_init, compute_acc
 from network import _netG, _netD, _netD_CIFAR10, _netG_CIFAR10
 from folder import ImageFolder
 from embedders import BERTEncoder
+
+
+MODE = 'wgan-gp' # Valid options are dcgan, wgan, or wgan-gp
+DIM = 128 # This overfits substantially; you're probably better off with 64
+LAMBDA = 10 # Gradient penalty lambda hyperparameter
+CRITIC_ITERS = 5 # How many critic iterations per generator iteration
+BATCH_SIZE = 64 # Batch size
+ITERS = 200000 # How many generator iterations to train for
+OUTPUT_DIM = 3072 # Number of pixels in CIFAR10 (3*32*32)
 
 cifar_text_labels = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 
@@ -142,6 +164,7 @@ aux_label = torch.LongTensor(opt.batchSize)
 real_label = 1
 fake_label = 0
 
+
 # if using cuda
 if opt.cuda:
     netD.cuda()
@@ -151,6 +174,16 @@ if opt.cuda:
     input, dis_label, aux_label = input.cuda(), dis_label.cuda(), aux_label.cuda()
     noise, eval_noise = noise.cuda(), eval_noise.cuda()
     cudnn.benchmark = True
+
+use_cuda = torch.cuda.is_available()
+if use_cuda:
+    gpu = 0
+
+one = torch.FloatTensor([1])
+mone = one * -1
+if use_cuda:
+    one = one.cuda(gpu)
+    mone = mone.cuda(gpu)
 
 # define variables
 input = Variable(input)
@@ -174,6 +207,58 @@ eval_noise.data.copy_(eval_noise_.view(opt.batchSize, nz, 1, 1))
 optimizerD = optim.Adam(netD.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
 optimizerG = optim.Adam(netG.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
 
+
+def calc_gradient_penalty(netD, real_data, fake_data):
+    # print "real_data: ", real_data.size(), fake_data.size()
+    alpha = torch.rand(opt.batchSize, 1)
+    alpha = alpha.expand(opt.batchSize, real_data.nelement()/opt.batchSize).contiguous().view(opt.batchSize, 3, 32, 32)
+    alpha = alpha.cuda(gpu) if use_cuda else alpha
+
+    interpolates = alpha * real_data + ((1 - alpha) * fake_data)
+
+    if use_cuda:
+        interpolates = interpolates.cuda(gpu)
+    interpolates = autograd.Variable(interpolates, requires_grad=True)
+
+    disc_interpolates = netD(interpolates)
+
+    gradients = autograd.grad(outputs=disc_interpolates, inputs=interpolates,
+                              grad_outputs=torch.ones(disc_interpolates.size()).cuda(gpu) if use_cuda else torch.ones(
+                                  disc_interpolates.size()),
+                              create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradients = gradients.view(gradients.size(0), -1)
+
+    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
+    return gradient_penalty
+
+# For generating samples
+def generate_image(frame, netG):
+    fixed_noise_128 = torch.randn(128, 128)
+    if use_cuda:
+        fixed_noise_128 = fixed_noise_128.cuda(gpu)
+    noisev = autograd.Variable(fixed_noise_128, volatile=True)
+    samples = netG(noisev)
+    samples = samples.view(-1, 3, 32, 32)
+    samples = samples.mul(0.5).add(0.5)
+    samples = samples.cpu().data.numpy()
+
+    lib.save_images.save_images(samples, './tmp/cifar10/samples_{}.jpg'.format(frame))
+
+# For calculating inception score
+def get_inception_score(G, ):
+    all_samples = []
+    for i in range(10):
+        samples_100 = torch.randn(100, 128)
+        if use_cuda:
+            samples_100 = samples_100.cuda(gpu)
+        samples_100 = autograd.Variable(samples_100, volatile=True)
+        all_samples.append(G(samples_100).cpu().data.numpy())
+
+    all_samples = np.concatenate(all_samples, axis=0)
+    all_samples = np.multiply(np.add(np.multiply(all_samples, 0.5), 0.5), 255).astype('int32')
+    all_samples = all_samples.reshape((-1, 3, 32, 32)).transpose(0, 2, 3, 1)
+    return lib.inception_score.get_inception_score(list(all_samples))
+
 avg_loss_D = 0.0
 avg_loss_G = 0.0
 avg_loss_A = 0.0
@@ -193,10 +278,16 @@ for epoch in range(opt.niter):
         batch_size = real_cpu.size(0)
         if opt.cuda:
             real_cpu = real_cpu.cuda()
+        real_data_v = autograd.Variable(real_cpu)
+
         input.resize_as_(real_cpu).copy_(real_cpu)
         dis_label.resize_(batch_size).fill_(real_label)
         aux_label.resize_(batch_size).copy_(label)
         dis_output, aux_output = netD(input)
+
+        D_real_dis, D_real_aux = netD(real_data_v)
+        D_real_dis = D_real_dis.mean()
+        D_real_dis.backward(mone)
 
         dis_errD_real = dis_criterion(dis_output, dis_label)
         aux_errD_real = aux_criterion(aux_output, aux_label)
@@ -215,7 +306,7 @@ for epoch in range(opt.niter):
             embedding = encoder(label, captions)
             embedding = embedding.detach().numpy()
         noise_ = np.random.normal(0, 1, (batch_size, nz))
-        
+
         noise_[np.arange(batch_size), :opt.embed_size] = embedding[:, :opt.embed_size]
         noise_ = (torch.from_numpy(noise_))
         noise.data.copy_(noise_.view(batch_size, nz, 1, 1))
@@ -224,12 +315,33 @@ for epoch in range(opt.niter):
         fake = netG(noise)
         dis_label.data.fill_(fake_label)
         dis_output, aux_output = netD(fake.detach())
+
+
+        # Wasserstein loss + GP
+        inputv = autograd.Variable(dis_output.data)
+        D_fake = netD(inputv)
+        D_fake = D_fake.mean()
+        D_fake.backward(one)
+
+        # train with gradient penalty (GP)
+        gradient_penalty = calc_gradient_penalty(netD, real_data_v.data, fake.data)
+        gradient_penalty.backward()
+
+        # print "gradien_penalty: ", gradient_penalty
+        D_cost = D_fake - D_real_dis + gradient_penalty
+        Wasserstein_D = D_real_dis - D_fake
+
+
         dis_errD_fake = dis_criterion(dis_output, dis_label)
         aux_errD_fake = aux_criterion(aux_output, aux_label)
         errD_fake = dis_errD_fake + aux_errD_fake
         errD_fake.backward()
+
+
         D_G_z1 = dis_output.data.mean()
-        errD = errD_real + errD_fake
+        # errD = errD_real + errD_fake
+        errD = Wasserstein_D
+
         optimizerD.step()
 
         ############################
@@ -267,9 +379,11 @@ for epoch in range(opt.niter):
             fake = netG(eval_noise)
             vutils.save_image(
                 fake.data,
-                '%s/fake_samples_epoch_%03d.png' % (opt.outf, epoch)
+                '%s/fake_samples_epoch_%03d_%d.png' % (opt.outf, epoch, i)
             )
 
     # do checkpointing
     torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (opt.outf, epoch))
     torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (opt.outf, epoch))
+
+
