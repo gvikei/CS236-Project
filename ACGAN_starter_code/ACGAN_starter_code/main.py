@@ -262,6 +262,7 @@ def get_inception_score(G, ):
 avg_loss_D = 0.0
 avg_loss_G = 0.0
 avg_loss_A = 0.0
+avg_loss_W = 0.0
 
 
 if sample_only:
@@ -285,17 +286,11 @@ for epoch in range(opt.niter):
         aux_label.resize_(batch_size).copy_(label)
         dis_output, aux_output = netD(input)
 
-        # D_real_dis, D_real_aux = netD(real_data_v)
-        # D_real_dis = D_real_dis.mean()
-        # D_real_dis.backward(mone)
-
         dis_errD_real = dis_criterion(dis_output, dis_label)
         aux_errD_real = aux_criterion(aux_output, aux_label)
         errD_real = dis_errD_real + aux_errD_real
         errD_real.backward()
         D_x = dis_output.data.mean()
-
-        D_real = errD_real
 
         # compute the current classification accuracy
         accuracy = compute_acc(aux_output, aux_label)
@@ -318,30 +313,21 @@ for epoch in range(opt.niter):
         dis_label.data.fill_(fake_label)
         dis_output, aux_output = netD(fake.detach())
 
-
-        # Wasserstein loss + GP
-        # inputv = autograd.Variable(dis_output.data)
-        # D_fake = netD(inputv)
-        # D_fake = D_fake.mean()
-        # D_fake.backward(one)
-
         dis_errD_fake = dis_criterion(dis_output, dis_label)
         aux_errD_fake = aux_criterion(aux_output, aux_label)
         errD_fake = dis_errD_fake + aux_errD_fake
         errD_fake.backward()
-        D_fake = errD_fake
 
         # train with gradient penalty (GP)
         gradient_penalty = calc_gradient_penalty(netD, real_cpu.data, fake.data)
         gradient_penalty.backward()
 
         # print "gradien_penalty: ", gradient_penalty
-        D_cost = D_fake - D_real + gradient_penalty
-        Wasserstein_D = D_real - D_fake
+        D_cost = errD_fake - errD_real + gradient_penalty
+        Wasserstein_D = errD_real - errD_fake
 
         D_G_z1 = dis_output.data.mean()
-        # errD = errD_real + errD_fake
-        errD = Wasserstein_D
+        errD = D_cost # errD_real + errD_fake
 
         optimizerD.step()
 
@@ -363,21 +349,26 @@ for epoch in range(opt.niter):
         all_loss_G = avg_loss_G * curr_iter
         all_loss_D = avg_loss_D * curr_iter
         all_loss_A = avg_loss_A * curr_iter
+        all_loss_W = avg_loss_W * curr_iter
         all_loss_G += errG.item()
         all_loss_D += errD.item()
         all_loss_A += accuracy
+        all_loss_W += Wasserstein_D.item()
         avg_loss_G = all_loss_G / (curr_iter + 1)
         avg_loss_D = all_loss_D / (curr_iter + 1)
         avg_loss_A = all_loss_A / (curr_iter + 1)
+        avg_loss_W = all_loss_W / (curr_iter + 1)
 
-        print('[%d/%d][%d/%d] Loss_D: %.4f (%.4f) Loss_G: %.4f (%.4f) D(x): %.4f D(G(z)): %.4f / %.4f Acc: %.4f (%.4f)'
+        print('[%d/%d][%d/%d] Loss_W: %.4f (%.4f) Loss_D: %.4f (%.4f) Loss_G: %.4f (%.4f) D(x): %.4f D(G(z)): %.4f / %.4f Acc: %.4f (%.4f)'
               % (epoch, opt.niter, i, len(dataloader),
-                 errD.item(), avg_loss_D, errG.item(), avg_loss_G, D_x, D_G_z1, D_G_z2, accuracy, avg_loss_A))
+                 Wasserstein_D.item(), avg_loss_W, errD.item(), avg_loss_D, errG.item(), avg_loss_G, D_x, D_G_z1, D_G_z2, accuracy, avg_loss_A))
 
         batches_done = epoch * len(dataloader) + i
         writer.add_scalar('train/bpd', avg_loss_G / np.log(2), batches_done)
-        writer.add_scalar('Wasserstein loss', avg_loss_D, batches_done)
-
+        writer.add_scalar('Wasserstein loss', avg_loss_W, batches_done)
+        writer.add_scalar('D loss', avg_loss_D, batches_done)
+        writer.add_scalar('G loss', avg_loss_G, batches_done)
+        writer.add_scalar('Accuracy', avg_loss_A, batches_done)
 
         if i % 100 == 0 or opt.sample_only:
             vutils.save_image(
@@ -393,8 +384,5 @@ for epoch in range(opt.niter):
     torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (opt.outf, epoch))
     torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (opt.outf, epoch))
 
-    # Compute inception score
-    inception_score = get_inception_score(netG)
-    writer.add_scalar("inception_score", inception_score, (epoch + 1) * len(dataloader))
 
 

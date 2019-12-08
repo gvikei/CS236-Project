@@ -4,5 +4,6 @@ num_labels = """2 1 3 2 8 2 1 1 5 6 4 9 9 5 4 6 3 4 2 6 3 1 5 6 3 0 3 6 8 8 3 2 
 
 text_labels = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 
-for item in num_labels.split(' '):
+for item in num_labels:
+    item = int(item)
     print(item, text_labels[item])
