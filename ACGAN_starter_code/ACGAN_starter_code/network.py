@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torchvision import models
 
 
 class _netG(nn.Module):
@@ -252,6 +253,21 @@ class _netD_CIFAR10(nn.Module):
         self.softmax = nn.Softmax()
         self.sigmoid = nn.Sigmoid()
 
+        self.resnet = models.resnet50(pretrained=True)
+
+        # Freeze model parameters
+        for param in self.resnet.parameters():
+            param.requires_grad = False
+
+        fc_inputs = self.resnet.fc.in_features
+        self.resnet.fc = nn.Sequential(
+            nn.Linear(fc_inputs, 256),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(256, 10),
+            nn.LogSoftmax(dim=1)  # For using NLLLoss()
+        )
+
     def forward(self, input):
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
             conv1 = nn.parallel.data_parallel(self.conv1, input, range(self.ngpu))
@@ -275,4 +291,7 @@ class _netD_CIFAR10(nn.Module):
             fc_aux = self.fc_aux(flat6)
         classes = self.softmax(fc_aux)
         realfake = self.sigmoid(fc_dis).view(-1, 1).squeeze(1)
-        return realfake, classes
+
+        classes_resnet = (classes + self.resnet(input)).div(2)
+
+        return realfake, classes_resnet

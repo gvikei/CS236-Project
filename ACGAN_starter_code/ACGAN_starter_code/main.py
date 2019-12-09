@@ -104,9 +104,10 @@ if __name__ == '__main__':
             root=opt.dataroot,
             transform=transforms.Compose([
                 transforms.Scale(opt.imageSize),
-                transforms.CenterCrop(opt.imageSize),
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
                 transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ]),
             classes_idx=(10, 20)
         )
@@ -375,7 +376,7 @@ if __name__ == '__main__':
             writer.add_scalar('G loss', avg_loss_G, batches_done)
             writer.add_scalar('Accuracy', avg_loss_A, batches_done)
 
-            if i % 100 == 0 or opt.sample_only:
+            if i == 0 or i % 100 == 99 or opt.sample_only:
                 vutils.save_image(
                     real_cpu, '%s/real_samples.png' % opt.outf)
                 print('Label for eval = {}'.format(eval_label))
