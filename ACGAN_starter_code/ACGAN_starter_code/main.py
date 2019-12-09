@@ -228,14 +228,15 @@ if __name__ == '__main__':
         disc_interpolates = netD(interpolates)
 
         gradient_penalty = 0
-        for i in range(len(disc_interpolates)):
-            gradients = autograd.grad(outputs=disc_interpolates[i], inputs=interpolates,
-                                      grad_outputs=torch.ones_like(disc_interpolates[i]).cuda(gpu) if use_cuda else torch.ones_like(
-                                          disc_interpolates[i]),
-                                      create_graph=True, retain_graph=True, only_inputs=True)[0]
-            gradients = gradients.view(gradients.size(0), -1)
+        # for i in range(len(disc_interpolates)):
+        i = 1
+        gradients = autograd.grad(outputs=disc_interpolates[i], inputs=interpolates,
+                                  grad_outputs=torch.ones_like(disc_interpolates[i]).cuda(gpu) if use_cuda else torch.ones_like(
+                                      disc_interpolates[i]),
+                                  create_graph=True, retain_graph=True, only_inputs=True)[0]
+        gradients = gradients.view(gradients.size(0), -1)
 
-            gradient_penalty += ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
+        gradient_penalty += ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
 
         return gradient_penalty.mean()
 
