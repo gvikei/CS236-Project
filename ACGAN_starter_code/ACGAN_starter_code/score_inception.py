@@ -105,7 +105,7 @@ def get_inception_score(G, ):
     all_samples = []
     n_samples = 1000
     for i in range(10):
-        samples = torch.FloatTensor(n_samples//10, 200, 1, 1).normal_(-1, 1)
+        samples = torch.FloatTensor(n_samples//10, 200, 1, 1).normal_(0, 1)
         samples = samples.cuda(0)
         samples = autograd.Variable(samples, volatile=True)
         all_samples.append(G(samples).cpu().data.numpy())
