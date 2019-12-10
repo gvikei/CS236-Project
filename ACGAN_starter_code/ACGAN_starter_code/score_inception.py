@@ -6,7 +6,7 @@ from __future__ import print_function
 
 from tensorboardX import SummaryWriter
 from torchsummary  import summary
-
+from datetime import datetime
 import argparse
 import os
 import matplotlib.pyplot as plt
@@ -32,6 +32,8 @@ from utils import weights_init, compute_acc
 from network import _netG, _netD, _netD_CIFAR10, _netG_CIFAR10
 
 from torchvision.models.inception import inception_v3
+from tensorboardX import SummaryWriter
+
 
 import numpy as np
 from scipy.stats import entropy
@@ -363,7 +365,7 @@ if __name__ == '__main__':
     elif opt.action == 'gen_imgs':
         sample_final_image(netG, opt)
     else:
-        netD = _netD_CIFAR10(ngpu, num_classes)
+        netD = _netD_CIFAR10(ngpu, num_classes).cuda()
         netD.apply(weights_init)
         if opt.netD != '':
             netD.load_state_dict(torch.load(opt.netD))
@@ -371,5 +373,15 @@ if __name__ == '__main__':
         print('netD', netD)
         print('netG', netG)
 
+        now = datetime.now()
+        logdir = "tensorboard/" + now.strftime("%Y%m%d-%H%M%S") + "/"
 
+        input = torch.FloatTensor(opt.batchSize, 3, 32, 32).cuda()
+        with SummaryWriter(comment='netD', log_dir=os.path.join(opt.outf, logdir)) as w:
+            model = netD
+            w.add_graph(model, (torch.zeros_like(input).cuda(),))
 
+        noise = torch.FloatTensor(opt.batchSize, 200, 1, 1).cuda()
+        with SummaryWriter(comment='netG', log_dir=os.path.join(opt.outf, logdir)) as w:
+            model = netG
+            w.add_graph(model, (torch.zeros_like(noise).cuda(),))

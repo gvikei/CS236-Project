@@ -30,6 +30,7 @@ from network import _netG, _netD, _netD_CIFAR10, _netG_CIFAR10
 from folder import ImageFolder
 from embedders import BERTEncoder
 
+LAMBDA=10
 
 if __name__ == '__main__':
     torch.multiprocessing.freeze_support()
@@ -66,7 +67,8 @@ if __name__ == '__main__':
     now = datetime.now()
     os.makedirs(os.path.join(opt.outf, "models"), exist_ok=True)
     os.makedirs(os.path.join(opt.outf, "tensorboard"), exist_ok=True)
-    writer = SummaryWriter(log_dir=os.path.join(opt.outf, "tensorboard/" + + now.strftime("%Y%m%d-%H%M%S") + "/"))
+    tensorboard_dir = os.path.join(opt.outf, "tensorboard/" + now.strftime("%Y%m%d-%H%M%S") + "/")
+    writer = SummaryWriter(log_dir=tensorboard_dir)
 
     # specify the gpu id if using only 1 gpu
     if opt.ngpu == 1:
@@ -364,13 +366,4 @@ if __name__ == '__main__':
         # do checkpointing
         torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (opt.outf, epoch))
         torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (opt.outf, epoch))
-
-
-    with SummaryWriter(comment='Discriminator') as w:
-        model = netD
-        w.add_graph(model, (torch.zeros_like(input),))
-
-    with SummaryWriter(comment='Generator') as w:
-        model = netG
-        w.add_graph(model, (torch.zeros_like(noise),))
 
