@@ -9,7 +9,8 @@ from torchsummary  import summary
 
 import argparse
 import os
-import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import ImageGrid
 import random
 import torch
 import sys
@@ -115,11 +116,12 @@ def get_inception_score(G, ):
     print(all_samples.shape)
     return inception_score(list(all_samples), cuda=True, batch_size=32, resize=True, splits=10)
 
-def sample_final_image(netG, opt, target_n_samples=10):
+def sample_final_image(netG, opt, target_n_samples=25):
 
 
     """Saves a set of generated imagenet pictures as individual files"""
 
+    captions = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
     batch_size = opt.batchSize
     dataset = dset.CIFAR10(
         root=opt.dataroot, download=True,
@@ -129,15 +131,13 @@ def sample_final_image(netG, opt, target_n_samples=10):
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]))
 
-    print('batch_size', batch_size)
-
     assert dataset
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
                                              shuffle=True, num_workers=int(opt.workers))
 
-    cifar_text_labels = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+
     encoder = BERTEncoder()
-    nz=200
+
     eval_noise = torch.FloatTensor(opt.batchSize, nz, 1, 1).normal_(0, 1).cuda()
     eval_noise_ = np.random.normal(-1, 1, (batch_size, nz))
     eval_label = np.random.randint(0, num_classes, batch_size)
@@ -162,14 +162,13 @@ def sample_final_image(netG, opt, target_n_samples=10):
 
     done = False
     n_samples = 0
-
+    labels = []
     while not done:
         for i, data in enumerate(dataloader, 0):
-
-            _, labels = data
-
+            _, label = data
             eval_noise_ = np.random.normal(0, 1, (batch_size, opt.nz))
-            conditional_embeddings = encoder(labels.to(device), captions)
+            labels.extend([captions[label[i]] for i in range(len(label))])
+            conditional_embeddings = encoder(label.to(device), captions)
 
             embeddings = conditional_embeddings.detach().numpy()
             eval_noise_[np.arange(batch_size), :opt.embed_size] = embeddings[:, :opt.embed_size]
@@ -186,8 +185,22 @@ def sample_final_image(netG, opt, target_n_samples=10):
     gen_imgs = torch.cat(gen_imgs)
     gen_imgs = torch.clamp(gen_imgs, 0, 1)
 
+    n_row = int(np.sqrt(target_n_samples))
+    fig = plt.figure(figsize=((8, 8)))
+    grid = ImageGrid(fig, 111, nrows_ncols=(n_row, n_row), axes_pad=0.2)
+
+    for i in range(n_row ** 2):
+        grid[i].imshow(gen_imgs[i].detach().numpy().transpose([1, 2, 0]))
+        grid[i].set_title(captions[i])
+        grid[i].tick_params(bottom=False, top=False, labelbottom=True)
+
+    save_file = os.path.join(target_dir, "img.png")
+    plt.savefig(save_file)
+    print("saved  {}".format(save_file))
+    plt.close()
+
     for idx, img in enumerate(gen_imgs):
-        torchvision.utils.save_image(img, target_dir + 'img' + str(idx) + '_' + captions[idx] +'.png')
+        torchvision.utils.save_image(img, target_dir + 'img' + str(idx) + '_' + labels[idx] +'.png')
 
 def sample_image2(netG, opt, target_n_samples=10):
     """Saves a grid of generated imagenet pictures with captions"""

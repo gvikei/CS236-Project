@@ -1,0 +1,1 @@
+python score_inception.py --cuda --netD=./outputs/samples/wgangp/netD_epoch_104.pth --netG=./outputs/samples/wgangp/netG_epoch_104.pth --dataroot=datasets/cifar10 --batchSize=100 --action=summary --outf=outputs/
