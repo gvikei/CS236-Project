@@ -199,8 +199,8 @@ def sample_final_image(netG, opt, target_n_samples=25):
     print("saved  {}".format(save_file))
     plt.close()
 
-    for idx, img in enumerate(gen_imgs):
-        torchvision.utils.save_image(img, target_dir + 'img' + str(idx) + '_' + labels[idx] +'.png')
+    # for idx, img in enumerate(gen_imgs):
+    #     torchvision.utils.save_image(img, target_dir + 'img' + str(idx) + '_' + labels[idx] +'.png')
 
 def sample_image2(netG, opt, target_n_samples=10):
     """Saves a grid of generated imagenet pictures with captions"""

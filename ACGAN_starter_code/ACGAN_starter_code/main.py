@@ -6,11 +6,10 @@ from __future__ import print_function
 
 from tensorboardX import SummaryWriter
 
-
+import random
 import argparse
 import os
 import numpy as np
-import random
 import torch
 import sys
 import torch.nn as nn
@@ -165,9 +164,6 @@ if __name__ == '__main__':
     eval_noise = torch.FloatTensor(opt.batchSize, nz, 1, 1).normal_(0, 1)
     dis_label = torch.FloatTensor(opt.batchSize)
     aux_label = torch.LongTensor(opt.batchSize)
-    real_label = 1
-    fake_label = 0
-
 
     # if using cuda
     if opt.cuda:
@@ -241,36 +237,6 @@ if __name__ == '__main__':
 
         return gradient_penalty.mean()
 
-    # For generating samples
-    def generate_image(frame, netG):
-        fixed_noise_128 = torch.randn(128, 128)
-        if use_cuda:
-            fixed_noise_128 = fixed_noise_128.cuda(gpu)
-        noisev = autograd.Variable(fixed_noise_128, volatile=True)
-        samples = netG(noisev)
-        samples = samples.view(-1, 3, 32, 32)
-        samples = samples.mul(0.5).add(0.5)
-        samples = samples.cpu().data.numpy()
-
-        lib.save_images.save_images(samples, './tmp/cifar10/samples_{}.jpg'.format(frame))
-
-    # For calculating inception score
-    def get_inception_score(G, ):
-        all_samples = []
-        for i in range(10):
-            samples_100 = torch.randn(100, 128)
-            if use_cuda:
-                samples_100 = samples_100.cuda(gpu)
-            samples_100 = autograd.Variable(samples_100, volatile=True)
-            all_samples.append(G(samples_100).cpu().data.numpy())
-
-        all_samples = np.concatenate(all_samples, axis=0)
-        all_samples = np.multiply(np.add(np.multiply(all_samples, 0.5), 0.5), 255).astype('int32')
-        all_samples = all_samples.reshape((-1, 3, 32, 32)).transpose(0, 2, 3, 1)
-        return lib.inception_score.get_inception_score(list(all_samples))
-
-
-
     avg_loss_D = 0.0
     avg_loss_G = 0.0
     avg_loss_A = 0.0
@@ -280,8 +246,14 @@ if __name__ == '__main__':
     if sample_only:
         opt.niter=1
 
+    best_loss_W = 300000
+    best_accuracy = 0
     for epoch in range(opt.niter):
         for i, data in enumerate(dataloader, 0):
+            # Soft and Noisy labels:
+            real_label = random.uniform(0.7, 1.2)
+            fake_label = random.uniform(0.0, 0.3)
+
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             ###########################
@@ -378,7 +350,7 @@ if __name__ == '__main__':
             writer.add_scalar('G loss', avg_loss_G, batches_done)
             writer.add_scalar('Accuracy', avg_loss_A, batches_done)
 
-            if i == 0 or i % 100 == 99 or opt.sample_only:
+            if i == 0 or i % 1000 == 999 or opt.sample_only:
                 vutils.save_image(
                     real_cpu, '%s/real_samples.png' % opt.outf)
                 print('Label for eval = {}'.format(eval_label))
@@ -388,6 +360,23 @@ if __name__ == '__main__':
                     '%s/fake_samples_epoch_%03d_%d.png' % (opt.outf, epoch, i)
                 )
 
+        if (accuracy > best_accuracy) or (Wasserstein_D.item() < best_loss_W):
+            best_accuracy = accuracy
+            best_loss_W = Wasserstein_D.item()
+            torch.save(netG.state_dict(), '%s/best_models/netG_epoch_%d_acc%d_w%d.pth' % (opt.outf, epoch, round(best_accuracy, 2), round(best_loss_W, 2)))
+            torch.save(netD.state_dict(), '%s/best_models/netD_epoch_%d_acc%d_w%d.pth' % (opt.outf, epoch, round(best_accuracy, 2), round(best_loss_W, 2)))
+
+
         # do checkpointing
         torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (opt.outf, epoch))
         torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (opt.outf, epoch))
+
+
+    with SummaryWriter(comment='Discriminator') as w:
+        model = netD
+        w.add_graph(model, (torch.zeros_like(input),))
+
+    with SummaryWriter(comment='Generator') as w:
+        model = netG
+        w.add_graph(model, (torch.zeros_like(noise),))
+

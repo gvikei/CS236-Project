@@ -1,1 +1,1 @@
-python main.py --netD=outputs/samples/wgangp/netD_epoch_104.pth --netG=outputs/samples/wgangp/netG_epoch_104.pth --imageSize=32 --outf=outputs/samples/wgangp --niter=500 --batchSize=100 --cuda --dataset=cifar10 --imageSize=32 --dataroot=datasets/cifar10 --workers=10
+python main.py --netD=outputs/samples/wgangp/best_D.pth --netG=outputs/samples/wgangp/best_G.pth --lr=0.0005 --imageSize=32 --outf=outputs/samples/wgangp --niter=1 --batchSize=100 --cuda --dataset=cifar10 --imageSize=32 --dataroot=datasets/cifar10 --workers=10

@@ -245,13 +245,6 @@ class _netD_CIFAR10(nn.Module):
             nn.LeakyReLU(0.2, inplace=True),
             nn.Dropout(0.5, inplace=False),
         )
-        # discriminator fc
-        self.fc_dis = nn.Linear(4*4*512, 1)
-        # aux-classifier fc
-        self.fc_aux = nn.Linear(4*4*512, num_classes)
-        # softmax and sigmoid
-        self.softmax = nn.Softmax()
-        self.sigmoid = nn.Sigmoid()
 
         self.resnet = models.resnet50(pretrained=True)
 
@@ -267,6 +260,14 @@ class _netD_CIFAR10(nn.Module):
             nn.Linear(256, 10),
             nn.LogSoftmax(dim=1)  # For using NLLLoss()
         )
+
+        # discriminator fc
+        self.fc_dis = nn.Linear(4*4*512, 1)
+        # aux-classifier fc
+        self.fc_aux = nn.Linear(4*4*512, num_classes)
+        # softmax and sigmoid
+        self.softmax = nn.Softmax()
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, input):
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
