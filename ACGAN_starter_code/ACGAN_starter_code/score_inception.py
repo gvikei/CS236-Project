@@ -5,7 +5,7 @@ Code modified from PyTorch DCGAN examples: https://github.com/pytorch/examples/t
 from __future__ import print_function
 
 from tensorboardX import SummaryWriter
-
+from torchsummary  import summary
 
 import argparse
 import os
@@ -135,9 +135,8 @@ def sample_final_image(netG, opt, target_n_samples=10):
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
                                              shuffle=True, num_workers=int(opt.workers))
 
-    cifar_text_labels = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+    cifar_text_labels = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
     encoder = BERTEncoder()
-    batch_size=100
     nz=200
     eval_noise = torch.FloatTensor(opt.batchSize, nz, 1, 1).normal_(0, 1).cuda()
     eval_noise_ = np.random.normal(-1, 1, (batch_size, nz))
@@ -188,18 +187,12 @@ def sample_final_image(netG, opt, target_n_samples=10):
     gen_imgs = torch.clamp(gen_imgs, 0, 1)
 
     for idx, img in enumerate(gen_imgs):
-        print('caption', captions[idx])
-        torchvision.utils.save_image(img, target_dir+'img'+str(idx)+ '_{0}'.format(captions[idx]) +'.png')
+        torchvision.utils.save_image(img, target_dir + 'img' + str(idx) + '_' + captions[idx] +'.png')
 
 def sample_image2(netG, opt, target_n_samples=10):
     """Saves a grid of generated imagenet pictures with captions"""
 
-    cifar_text_labels = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
-    batch_size=100
-    nz=200
-    eval_label = np.random.randint(0, num_classes, batch_size)
-    if opt.dataset == 'cifar10':
-       captions = [cifar_text_labels[per_label] for per_label in eval_label]
+    captions = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 
     batch_size = opt.batchSize
     dataset = dset.CIFAR10(
@@ -210,12 +203,9 @@ def sample_image2(netG, opt, target_n_samples=10):
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]))
 
-    print('batch_size', batch_size)
-
     assert dataset
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
                                              shuffle=True, num_workers=int(opt.workers))
-
     encoder = BERTEncoder()
 
     target_ori_dir = os.path.join(opt.outf, "samples_ori/image/")
@@ -233,10 +223,12 @@ def sample_image2(netG, opt, target_n_samples=10):
     ori_imgs = []
     n_samples = 0
     done = False
+    labels = []
+
     while not done:
-        #for (ori_img_batch, labels_batch, captions_batch) in dataloader:
         for i, data in enumerate(dataloader, 0):
-            ori_img_batch, _ = data
+            ori_img_batch, label = data
+            labels.extend([captions[label[i]] for i in range(len(label))])
             eval_noise_ = np.random.normal(0, 1, (batch_size, opt.nz))
             conditional_embeddings = encoder(None, captions)
 
@@ -260,10 +252,10 @@ def sample_image2(netG, opt, target_n_samples=10):
     gen_imgs = torch.clamp(gen_imgs, 0, 1)
 
     for idx, img in enumerate(ori_imgs):
-        torchvision.utils.save_image(img, target_ori_dir+'ori_img'+str(idx)+'.png')
+        torchvision.utils.save_image(img, target_ori_dir+'ori_img'+str(idx)+'_'+labels[idx]+'.png')
 
     for idx, img in enumerate(gen_imgs):
-        torchvision.utils.save_image(img, target_gen_dir+'gen_img'+str(idx)+'.png')
+        torchvision.utils.save_image(img, target_gen_dir+'gen_img'+str(idx)+'_'+labels[idx]+'.png')
 
 
 if __name__ == '__main__':
@@ -301,6 +293,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_classes', type=int, default=10, help='Number of classes for AC-GAN')
     parser.add_argument('--gpu_id', type=int, default=0, help='The ID of the specified GPU')
     parser.add_argument('--sample_only', type=bool, default=False, help='If enabled, only generate images without doing training.')
+    parser.add_argument('--action', default='fid_score', help='fid_score | inception_score | gen_imgs')
 
     opt = parser.parse_args()
     print(opt)
@@ -348,8 +341,22 @@ if __name__ == '__main__':
         netG.load_state_dict(torch.load(opt.netG))
         netG.cuda()
     print(netG, type(netG))
-    # print(get_inception_score(netG))
-    # sample_final_image(netG, opt)
-    sample_image2(netG, opt)
+
+
+    if opt.action == 'fid_score':
+        sample_image2(netG, opt)
+    elif opt.action == 'inception_score':
+        print(get_inception_score(netG))
+    elif opt.action == 'gen_imgs':
+        sample_final_image(netG, opt)
+    else:
+        netD = _netD_CIFAR10(ngpu, num_classes)
+        netD.apply(weights_init)
+        if opt.netD != '':
+            netD.load_state_dict(torch.load(opt.netD))
+
+        print('netD', netD)
+        print('netG', netG)
+
 
 
