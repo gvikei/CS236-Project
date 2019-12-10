@@ -269,6 +269,8 @@ if __name__ == '__main__':
         all_samples = all_samples.reshape((-1, 3, 32, 32)).transpose(0, 2, 3, 1)
         return lib.inception_score.get_inception_score(list(all_samples))
 
+
+
     avg_loss_D = 0.0
     avg_loss_G = 0.0
     avg_loss_A = 0.0

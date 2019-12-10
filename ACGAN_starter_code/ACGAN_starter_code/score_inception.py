@@ -16,8 +16,10 @@ import sys
 import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
+import torchvision
+from embedders import BERTEncoder
 
-
+import torchvision.datasets as dset
 import torch.optim as optim
 from torch import autograd
 import torch.utils.data
@@ -113,6 +115,156 @@ def get_inception_score(G, ):
     print(all_samples.shape)
     return inception_score(list(all_samples), cuda=True, batch_size=32, resize=True, splits=10)
 
+def sample_final_image(netG, opt, target_n_samples=10):
+
+
+    """Saves a set of generated imagenet pictures as individual files"""
+
+    batch_size = opt.batchSize
+    dataset = dset.CIFAR10(
+        root=opt.dataroot, download=True,
+        transform=transforms.Compose([
+            transforms.Scale(opt.imageSize),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ]))
+
+    print('batch_size', batch_size)
+
+    assert dataset
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
+                                             shuffle=True, num_workers=int(opt.workers))
+
+    cifar_text_labels = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+    encoder = BERTEncoder()
+    batch_size=100
+    nz=200
+    eval_noise = torch.FloatTensor(opt.batchSize, nz, 1, 1).normal_(0, 1).cuda()
+    eval_noise_ = np.random.normal(-1, 1, (batch_size, nz))
+    eval_label = np.random.randint(0, num_classes, batch_size)
+    if opt.dataset == 'cifar10':
+       captions = [cifar_text_labels[per_label] for per_label in eval_label]
+       embedding = encoder(eval_label, captions)
+       embedding = embedding.detach().numpy()
+    eval_noise_[np.arange(batch_size), :opt.embed_size] = embedding[:, :opt.embed_size]
+    eval_noise_ = (torch.from_numpy(eval_noise_))
+    eval_noise.data.copy_(eval_noise_.view(batch_size, nz, 1, 1))
+
+    target_dir = os.path.join(opt.outf, "samples_final/")
+    if not os.path.isdir(target_dir):
+        os.makedirs(target_dir)
+
+    device = "cpu"
+    if opt.cuda:
+        device = "cuda"
+    print("INFO: device is: " + device)
+
+    gen_imgs = []
+
+    done = False
+    n_samples = 0
+
+    while not done:
+        for i, data in enumerate(dataloader, 0):
+
+            _, labels = data
+
+            eval_noise_ = np.random.normal(0, 1, (batch_size, opt.nz))
+            conditional_embeddings = encoder(labels.to(device), captions)
+
+            embeddings = conditional_embeddings.detach().numpy()
+            eval_noise_[np.arange(batch_size), :opt.embed_size] = embeddings[:, :opt.embed_size]
+            eval_noise_ = (torch.from_numpy(eval_noise_))
+
+            imgs = netG(eval_noise_.view(batch_size, opt.nz, 1, 1).float().to(device)).cpu()
+            gen_imgs.append(imgs)
+
+            n_samples += batch_size
+            if n_samples >= target_n_samples:
+                done = True
+                break
+
+    gen_imgs = torch.cat(gen_imgs)
+    gen_imgs = torch.clamp(gen_imgs, 0, 1)
+
+    for idx, img in enumerate(gen_imgs):
+        print('caption', captions[idx])
+        torchvision.utils.save_image(img, target_dir+'img'+str(idx)+ '_{0}'.format(captions[idx]) +'.png')
+
+def sample_image2(netG, opt, target_n_samples=10):
+    """Saves a grid of generated imagenet pictures with captions"""
+
+    cifar_text_labels = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+    batch_size=100
+    nz=200
+    eval_label = np.random.randint(0, num_classes, batch_size)
+    if opt.dataset == 'cifar10':
+       captions = [cifar_text_labels[per_label] for per_label in eval_label]
+
+    batch_size = opt.batchSize
+    dataset = dset.CIFAR10(
+        root=opt.dataroot, download=True,
+        transform=transforms.Compose([
+            transforms.Scale(opt.imageSize),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ]))
+
+    print('batch_size', batch_size)
+
+    assert dataset
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
+                                             shuffle=True, num_workers=int(opt.workers))
+
+    encoder = BERTEncoder()
+
+    target_ori_dir = os.path.join(opt.outf, "samples_ori/image/")
+    target_gen_dir = os.path.join(opt.outf, "samples_gen/image/")
+    if not os.path.isdir(target_ori_dir):
+        os.makedirs(target_ori_dir)
+    if not os.path.isdir(target_gen_dir):
+        os.makedirs(target_gen_dir)
+
+    device = "cpu"
+    if opt.cuda:
+        device = "cuda"
+
+    gen_imgs = []
+    ori_imgs = []
+    n_samples = 0
+    done = False
+    while not done:
+        #for (ori_img_batch, labels_batch, captions_batch) in dataloader:
+        for i, data in enumerate(dataloader, 0):
+            ori_img_batch, _ = data
+            eval_noise_ = np.random.normal(0, 1, (batch_size, opt.nz))
+            conditional_embeddings = encoder(None, captions)
+
+            embeddings = conditional_embeddings.detach().numpy()
+            eval_noise_[np.arange(batch_size), :opt.embed_size] = embeddings[:, :opt.embed_size]
+            eval_noise_ = (torch.from_numpy(eval_noise_))
+
+            gen_img_batch = netG(eval_noise_.view(batch_size, opt.nz, 1, 1).float().to(device)).cpu()
+            ori_imgs.append(ori_img_batch)
+            gen_imgs.append(gen_img_batch)
+
+            n_samples += batch_size
+            if n_samples >= target_n_samples:
+                done = True
+                break
+
+    ori_imgs = torch.cat(ori_imgs)
+    ori_imgs = torch.clamp(ori_imgs, 0, 1)
+
+    gen_imgs = torch.cat(gen_imgs)
+    gen_imgs = torch.clamp(gen_imgs, 0, 1)
+
+    for idx, img in enumerate(ori_imgs):
+        torchvision.utils.save_image(img, target_ori_dir+'ori_img'+str(idx)+'.png')
+
+    for idx, img in enumerate(gen_imgs):
+        torchvision.utils.save_image(img, target_gen_dir+'gen_img'+str(idx)+'.png')
+
 
 if __name__ == '__main__':
     torch.multiprocessing.freeze_support()
@@ -129,6 +281,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', default='cifar10', help='cifar10 | imagenet')
+    parser.add_argument('--dataroot', required=True, help='path to dataset')
     parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
     parser.add_argument('--batchSize', type=int, default=1, help='input batch size')
     parser.add_argument('--imageSize', type=int, default=128, help='the height / width of the input image to network')
@@ -195,8 +348,8 @@ if __name__ == '__main__':
         netG.load_state_dict(torch.load(opt.netG))
         netG.cuda()
     print(netG, type(netG))
-    print(get_inception_score(netG))
-
-
+    # print(get_inception_score(netG))
+    # sample_final_image(netG, opt)
+    sample_image2(netG, opt)
 
 
