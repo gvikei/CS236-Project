@@ -16,6 +16,7 @@ import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 
+from datetime import datetime
 
 import torch.optim as optim
 from torch import autograd
@@ -32,14 +33,6 @@ from embedders import BERTEncoder
 
 if __name__ == '__main__':
     torch.multiprocessing.freeze_support()
-
-    MODE = 'wgan-gp' # Valid options are dcgan, wgan, or wgan-gp
-    DIM = 128 # This overfits substantially; you're probably better off with 64
-    LAMBDA = 10 # Gradient penalty lambda hyperparameter
-    CRITIC_ITERS = 5 # How many critic iterations per generator iteration
-    BATCH_SIZE = 64 # Batch size
-    ITERS = 200000 # How many generator iterations to train for
-    OUTPUT_DIM = 3072 # Number of pixels in CIFAR10 (3*32*32)
 
     cifar_text_labels = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 
@@ -69,9 +62,11 @@ if __name__ == '__main__':
     opt = parser.parse_args()
     print(opt)
 
+
+    now = datetime.now()
     os.makedirs(os.path.join(opt.outf, "models"), exist_ok=True)
     os.makedirs(os.path.join(opt.outf, "tensorboard"), exist_ok=True)
-    writer = SummaryWriter(log_dir=os.path.join(opt.outf, "tensorboard"))
+    writer = SummaryWriter(log_dir=os.path.join(opt.outf, "tensorboard/" + + now.strftime("%Y%m%d-%H%M%S") + "/"))
 
     # specify the gpu id if using only 1 gpu
     if opt.ngpu == 1:
@@ -251,7 +246,7 @@ if __name__ == '__main__':
     for epoch in range(opt.niter):
         for i, data in enumerate(dataloader, 0):
             # Soft and Noisy labels:
-            real_label = random.uniform(0.7, 1.2)
+            real_label = random.uniform(0.8, 1.2)
             fake_label = random.uniform(0.0, 0.3)
 
             ############################
@@ -350,7 +345,7 @@ if __name__ == '__main__':
             writer.add_scalar('G loss', avg_loss_G, batches_done)
             writer.add_scalar('Accuracy', avg_loss_A, batches_done)
 
-            if i == 0 or i % 1000 == 999 or opt.sample_only:
+            if i == 0 or i % 200 == 199 or opt.sample_only:
                 vutils.save_image(
                     real_cpu, '%s/real_samples.png' % opt.outf)
                 print('Label for eval = {}'.format(eval_label))
@@ -363,9 +358,8 @@ if __name__ == '__main__':
         if (accuracy > best_accuracy) or (Wasserstein_D.item() < best_loss_W):
             best_accuracy = accuracy
             best_loss_W = Wasserstein_D.item()
-            torch.save(netG.state_dict(), '%s/best_models/netG_epoch_%d_acc%d_w%d.pth' % (opt.outf, epoch, round(best_accuracy, 2), round(best_loss_W, 2)))
-            torch.save(netD.state_dict(), '%s/best_models/netD_epoch_%d_acc%d_w%d.pth' % (opt.outf, epoch, round(best_accuracy, 2), round(best_loss_W, 2)))
-
+            torch.save(netG.state_dict(), '%s/best_models/netG_epoch_%d_acc%d_w%d.pth' % (opt.outf, epoch, round(best_accuracy, 3), round(best_loss_W, 3)))
+            torch.save(netD.state_dict(), '%s/best_models/netD_epoch_%d_acc%d_w%d.pth' % (opt.outf, epoch, round(best_accuracy, 3), round(best_loss_W, 3)))
 
         # do checkpointing
         torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (opt.outf, epoch))
