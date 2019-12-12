@@ -2,3 +2,7 @@ outputs/tensorboard/*
 outputs/samples/wgangp/*.pth
 outputs/samples/
 outputs/samples/wgangp/best_models/*epoch*
+*.pth
+*.png
+*.pyc
+*tfevents*
