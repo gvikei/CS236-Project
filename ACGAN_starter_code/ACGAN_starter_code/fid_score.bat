@@ -1,2 +1,2 @@
-python score_inception.py --cuda --netG=./outputs/samples/wgangp/best_G.pth --dataroot=datasets/cifar10 --batchSize=10 --action=fid_score --outf=outputs/
+python score_inception.py --cuda --netG=./outputs/samples/wgangp/ACGAN_G.pth --dataroot=datasets/cifar10 --batchSize=10 --action=fid_score --outf=outputs/
 python fid_score.py -c 0 outputs/samples_gen/image outputs/samples_ori/image
