@@ -1,0 +1,1 @@
+python score_inception.py --cuda --netD=./outputs/samples/wgangp/best_D.pth --netG=./outputs/samples/wgangp/best_G.pth --dataroot=datasets/cifar10 --batchSize=100 --action=summary --outf=outputs/samples/wgangp

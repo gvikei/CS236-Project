@@ -1,0 +1,1 @@
+python main.py --netD=outputs/samples/wgangp/best_D.pth --netG=outputs/samples/wgangp/best_G.pth --imageSize=32 --outf=outputs/samples/wgangp --niter=300 --batchSize=100 --cuda --dataset=cifar10 --imageSize=32 --dataroot=datasets/cifar10 --workers=10
